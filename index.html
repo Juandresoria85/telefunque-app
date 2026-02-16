@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Telefunque Anotador 🇪🇨</title>
+    
+    <!-- Tailwind CSS (Diseño) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Iconos -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Efecto Confeti -->
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        /* Ajustes para que se sienta como App Nativa */
+        body { 
+            -webkit-tap-highlight-color: transparent; 
+            font-family: system-ui, -apple-system, sans-serif; 
+            overscroll-behavior-y: none;
+        }
+        .hidden { display: none !important; }
+        
+        /* Animaciones suaves */
+        .fade-in { animation: fadeIn 0.3s ease-in; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Input numérico limpio */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen pb-safe">
+
+    <!-- ================= PANTALLA 1: CONFIGURACIÓN ================= -->
+    <div id="view-setup" class="max-w-md mx-auto p-6 min-h-screen flex flex-col justify-center fade-in">
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-black text-indigo-800 tracking-tighter">TELEFUNQUE</h1>
+            <span class="bg-yellow-400 text-slate-900 text-[10px] font-bold px-2 py-1 rounded uppercase tracking-widest shadow-sm">Anotador Oficial 🇪🇨</span>
+        </div>
+
+        <div class="bg-white p-6 rounded-[2rem] shadow-xl border border-slate-100 relative overflow-hidden">
+            <!-- Botón Restaurar (Si hay partida guardada) -->
+            <div id="btn-resume" class="hidden mb-6 bg-indigo-50 border border-indigo-100 p-4 rounded-2xl text-center">
+                <p class="text-xs font-bold text-indigo-400 uppercase mb-2">Partida encontrada</p>
+                <button onclick="app.resumeGame()" class="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-indigo-200 active:scale-95 transition-transform flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-rotate-right"></i> Continuar Partida
+                </button>
+                <button onclick="app.clearStorage()" class="mt-2 text-xs text-red-400 font-bold underline">Borrar y empezar de cero</button>
+            </div>
+
+            <div id="setup-form">
+                <h2 class="font-bold text-slate-400 text-xs uppercase tracking-widest mb-4">Jugadores</h2>
+                
+                <div class="flex gap-2 mb-4">
+                    <input id="input-player" type="text" placeholder="Nombre (ej. Juan)" class="flex-1 bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 font-bold focus:border-indigo-500 focus:bg-white transition-colors outline-none" onkeypress="if(event.key === 'Enter') app.addPlayer()">
+                    <button onclick="app.addPlayer()" class="bg-slate-800 text-white w-14 rounded-xl font-bold text-xl shadow-lg active:scale-95 transition-transform">
+                        <i class="fa-solid fa-plus"></i>
+                    </button>
+                </div>
+
+                <div id="list-players-setup" class="space-y-2 mb-6 max-h-48 overflow-y-auto pr-1">
+                    <p class="text-center text-slate-300 text-sm italic py-4">Agrega los nombres aquí...</p>
+                </div>
+
+                <button onclick="app.startGame()" class="w-full bg-green-500 text-white py-4 rounded-xl font-bold text-lg shadow-xl shadow-green-200 active:scale-95 transition-transform flex justify-center gap-2 items-center">
+                    <i class="fa-solid fa-play"></i> INICIAR JUEGO
+                </button>
+            </div>
+        </div>
+        <p class="text-center text-slate-300 text-xs mt-8">Funciona sin internet • Guarda automático</p>
+    </div>
+
+    <!-- ================= PANTALLA 2: JUEGO ================= -->
+    <div id="view-game" class="hidden max-w-md mx-auto min-h-screen bg-slate-100 pb-32 fade-in">
+        <!-- Header Fijo -->
+        <div class="sticky top-0 z-30 bg-white/90 backdrop-blur-md shadow-sm border-b border-slate-200 px-4 py-3">
+            <div class="flex justify-between items-center">
+                <div>
+                    <div class="flex items-center gap-2 mb-1">
+                        <span id="lbl-round-idx" class="text-[10px] font-black bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded uppercase">R1</span>
+                        <span id="lbl-cards" class="text-[10px] font-bold text-slate-400">? CARTAS</span>
+                    </div>
+                    <h2 id="lbl-round-name" class="text-xl font-black leading-none text-slate-800 truncate max-w-[200px]">Ronda</h2>
+                </div>
+                <!-- Botón Dealer (Clic para cambiar manual) -->
+                <button onclick="app.manualDealer()" class="text-right focus:outline-none group">
+                    <div class="text-[10px] uppercase font-bold text-slate-400 group-active:text-indigo-500">Reparte</div>
+                    <div class="flex items-center justify-end gap-1">
+                        <span id="lbl-dealer" class="font-bold text-indigo-600 text-sm truncate max-w-[80px]">?</span>
+                        <i class="fa-solid fa-rotate text-xs text-slate-300 group-active:text-indigo-500"></i>
+                    </div>
+                </button>
+            </div>
+        </div>
+
+        <!-- Lista de Jugadores -->
+        <div id="list-game" class="p-3 space-y-3"></div>
+
+        <!-- Barra Inferior -->
+        <div class="fixed bottom-0 left-0 w-full bg-white border-t border-slate-200 p-3 z-40 pb-safe">
+            <div class="max-w-md mx-auto flex gap-3">
+                <button onclick="app.showScoreboard()" class="px-5 bg-slate-100 text-slate-600 rounded-xl font-bold active:scale-95 transition">
+                    <i class="fa-solid fa-list-ol"></i>
+                </button>
+                <button onclick="app.nextRound()" class="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg shadow-indigo-200 active:scale-95 transition-transform flex items-center justify-center gap-2">
+                    Siguiente Ronda <i class="fa-solid fa-chevron-right text-xs"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ================= PANTALLA 3: RESULTADOS / MENU ================= -->
+    <div id="modal-scoreboard" class="hidden fixed inset-0 z-50 bg-slate-900/95 backdrop-blur flex flex-col p-4 fade-in">
+        <div class="flex justify-between items-center mb-6 pt-4">
+            <h2 class="text-2xl font-bold text-white"><i class="fa-solid fa-trophy text-yellow-400 mr-2"></i>Tabla</h2>
+            <button onclick="app.hideScoreboard()" class="bg-white/10 text-white p-2 rounded-full w-10 h-10 hover:bg-white/20"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        
+        <div id="list-scoreboard" class="flex-1 overflow-y-auto space-y-2 pr-2"></div>
+
+        <div class="mt-4 pt-4 border-t border-white/10 space-y-3 pb-safe">
+            <button onclick="app.shareWhatsApp()" class="w-full bg-[#25D366] text-white py-4 rounded-xl font-bold shadow-lg active:scale-95 transition">
+                <i class="fa-brands fa-whatsapp text-lg mr-2"></i> Compartir Resultados
+            </button>
+            <button onclick="if(confirm('¿Reiniciar partida?')) app.clearStorage()" class="w-full bg-red-500/10 text-red-400 py-3 rounded-xl font-bold text-sm">
+                Borrar y Salir
+            </button>
+        </div>
+    </div>
+
+    <!-- ================= PANTALLA 4: GANADOR FINAL ================= -->
+    <div id="view-winner" class="hidden fixed inset-0 z-50 bg-slate-900 text-white flex flex-col items-center justify-center p-6 text-center fade-in">
+        <div class="relative">
+            <div class="absolute inset-0 bg-yellow-500 blur-3xl opacity-20 rounded-full"></div>
+            <i class="fa-solid fa-crown text-yellow-400 text-7xl mb-6 animate-bounce relative z-10"></i>
+        </div>
+        
+        <h1 class="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-orange-500 mb-2">¡CAMPEÓN!</h1>
+        
+        <div class="bg-slate-800 p-8 rounded-[2rem] w-full max-w-sm mb-8 border border-slate-700 relative overflow-hidden shadow-2xl">
+            <div class="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-yellow-400 via-red-500 to-indigo-500"></div>
+            <div id="winner-name" class="text-4xl font-black mb-2 text-white">Nombre</div>
+            <div id="winner-score" class="text-3xl text-yellow-400 font-bold font-mono">0 pts</div>
+            <div class="mt-4 inline-block bg-slate-900 px-3 py-1 rounded-lg border border-slate-600">
+                <span class="text-xs font-bold text-slate-400 uppercase tracking-widest"><span id="winner-buys" class="text-white">0</span> Compras</span>
+            </div>
+        </div>
+
+        <button onclick="app.shareWhatsApp()" class="w-full max-w-sm bg-[#25D366] text-white py-4 rounded-xl font-bold mb-3 shadow-lg active:scale-95 transition">
+            <i class="fa-brands fa-whatsapp"></i> Enviar al Grupo
+        </button>
+        <button onclick="app.clearStorage()" class="w-full max-w-sm bg-white text-slate-900 py-4 rounded-xl font-bold active:scale-95 transition">
+            Nueva Partida
+        </button>
+    </div>
+
+    <!-- LOGICA JAVASCRIPT -->
+    <script>
+        const ROUNDS = [
+            { name: "1 Trío", cards: 6 }, { name: "2 Tríos", cards: 7 },
+            { name: "1 Cuadra", cards: 7 }, { name: "2 Cuadras", cards: 8 },
+            { name: "1 Quina", cards: 5 }, { name: "1 Chueca", cards: 5 },
+            { name: "1 Escalera", cards: 7 } // Puedes agregar "Telefunque" al final si quieres
+        ];
+
+        // Estado inicial
+        let state = {
+            players: [],
+            roundIdx: 0,
+            dealerIdx: 0,
+            startDate: new Date().toLocaleDateString()
+        };
+
+        const $ = (id) => document.getElementById(id);
+
+        // --- CORE APP ---
+        window.app = {
+            init: () => {
+                const saved = localStorage.getItem('telefunque_db');
+                if (saved) {
+                    try {
+                        const parsed = JSON.parse(saved);
+                        if(parsed.players && parsed.players.length > 0) {
+                            state = parsed;
+                            $('btn-resume').classList.remove('hidden');
+                            $('setup-form').classList.add('hidden');
+                        }
+                    } catch(e) { console.error("Error cargando save", e); }
+                }
+            },
+
+            addPlayer: () => {
+                const input = $('input-player');
+                const name = input.value.trim();
+                if (!name) return;
+                
+                state.players.push({
+                    id: Date.now(),
+                    name: name,
+                    scores: Array(ROUNDS.length).fill(null), // null = no jugado
+                    buys: 0,
+                    total: 0
+                });
+                
+                input.value = '';
+                app.renderSetupList();
+            },
+
+            removePlayer: (idx) => {
+                state.players.splice(idx, 1);
+                app.renderSetupList();
+            },
+
+            renderSetupList: () => {
+                const list = $('list-players-setup');
+                if (state.players.length === 0) {
+                    list.innerHTML = '<p class="text-center text-slate-300 text-sm italic py-4">Agrega al menos 2 jugadores</p>';
+                    return;
+                }
+                list.innerHTML = state.players.map((p, i) => `
+                    <div class="flex justify-between items-center bg-slate-50 p-3 rounded-xl border border-slate-100 mb-2">
+                        <span class="font-bold text-slate-700">${i+1}. ${p.name}</span>
+                        <button onclick="app.removePlayer(${i})" class="text-red-400 hover:text-red-600 px-2"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                `).join('');
+            },
+
+            startGame: () => {
+                if (state.players.length < 2) return alert("Agrega al menos 2 jugadores");
+                state.dealerIdx = Math.floor(Math.random() * state.players.length);
+                state.roundIdx = 0;
+                app.save();
+                app.renderGame();
+                
+                $('view-setup').classList.add('hidden');
+                $('view-game').classList.remove('hidden');
+            },
+
+            resumeGame: () => {
+                $('view-setup').classList.add('hidden');
+                $('view-game').classList.remove('hidden');
+                app.renderGame();
+            },
+
+            renderGame: () => {
+                if (state.roundIdx >= ROUNDS.length) {
+                    app.showWinner();
+                    return;
+                }
+
+                const round = ROUNDS[state.roundIdx];
+                const dealer = state.players[state.dealerIdx];
+
+                $('lbl-round-idx').innerText = `R${state.roundIdx + 1}`;
+                $('lbl-cards').innerText = `${round.cards} CARTAS`;
+                $('lbl-round-name').innerText = round.name;
+                $('lbl-dealer').innerText = dealer.name;
+
+                const list = $('list-game');
+                list.innerHTML = state.players.map((p, i) => {
+                    const isDealer = i === state.dealerIdx;
+                    const val = p.scores[state.roundIdx] === null ? '' : p.scores[state.roundIdx];
+                    
+                    return `
+                    <div class="bg-white rounded-2xl p-4 shadow-sm border ${isDealer ? 'border-indigo-200 ring-2 ring-indigo-50' : 'border-slate-100'} transition-all">
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <div class="font-bold text-lg text-slate-800 flex items-center gap-2">
+                                    ${p.name}
+                                    ${isDealer ? '<i class="fa-solid fa-hand-holding text-indigo-500 text-xs"></i>' : ''}
+                                </div>
+                                <div class="text-xs font-bold bg-slate-100 text-slate-500 inline-block px-2 py-0.5 rounded mt-1">
+                                    Total: ${p.total} pts
+                                </div>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-slate-400 uppercase block text-right mb-1">Puntos</label>
+                                <input type="number" inputmode="numeric"
+                                    value="${val}"
+                                    onchange="app.updateScore(${i}, this.value)"
+                                    placeholder="-" 
+                                    class="w-20 h-14 text-center text-3xl font-black bg-slate-50 border-2 border-slate-200 rounded-xl focus:border-indigo-500 focus:bg-white transition-all text-indigo-900 outline-none placeholder-slate-300">
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between border-t border-slate-50 pt-2">
+                            <span class="text-xs font-bold text-slate-400 uppercase tracking-wide">Compras (${p.buys})</span>
+                            <div class="flex items-center gap-2">
+                                <button onclick="app.updateBuys(${i}, -1)" class="w-10 h-8 bg-white border border-slate-200 rounded-lg shadow-sm text-slate-400 active:bg-slate-100 active:scale-95"><i class="fa-solid fa-minus"></i></button>
+                                <button onclick="app.updateBuys(${i}, 1)" class="w-10 h-8 bg-white border border-slate-200 rounded-lg shadow-sm text-indigo-600 active:bg-indigo-50 active:scale-95"><i class="fa-solid fa-plus"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                    `;
+                }).join('');
+                window.scrollTo(0,0);
+            },
+
+            updateScore: (idx, val) => {
+                const score = val === '' ? null : parseInt(val);
+                state.players[idx].scores[state.roundIdx] = score;
+                app.recalcTotals();
+                app.save();
+            },
+
+            updateBuys: (idx, delta) => {
+                const p = state.players[idx];
+                p.buys = Math.max(0, p.buys + delta);
+                app.save();
+                app.renderGame(); // Re-render para actualizar contador visual
+            },
+
+            recalcTotals: () => {
+                state.players.forEach(p => {
+                    p.total = p.scores.reduce((acc, curr) => acc + (curr || 0), 0);
+                });
+            },
+
+            nextRound: () => {
+                // Validación: Todos deben tener puntaje
+                const incomplete = state.players.find(p => p.scores[state.roundIdx] === null);
+                if (incomplete) return alert(`Falta anotar el puntaje de ${incomplete.name}`);
+
+                // Lógica Repartidor: El que tuvo MENOS puntaje en ESTA ronda
+                let minScore = Infinity;
+                let winners = [];
+                
+                state.players.forEach((p, idx) => {
+                    const s = p.scores[state.roundIdx] || 0;
+                    if(s < minScore) {
+                        minScore = s;
+                        winners = [idx];
+                    } else if (s === minScore) {
+                        winners.push(idx);
+                    }
+                });
+
+                // Si hay empate, por defecto tomamos el primero (o aleatorio entre ellos)
+                state.dealerIdx = winners[0];
+                state.roundIdx++;
+                
+                app.save();
+                app.renderGame();
+            },
+
+            manualDealer: () => {
+                state.dealerIdx = (state.dealerIdx + 1) % state.players.length;
+                app.save();
+                app.renderGame();
+            },
+
+            showScoreboard: () => {
+                const list = $('list-scoreboard');
+                const sorted = [...state.players].sort((a,b) => a.total - b.total);
+                
+                list.innerHTML = sorted.map((p, i) => `
+                    <div class="flex items-center justify-between bg-white/5 p-4 rounded-xl border border-white/10 text-white mb-2">
+                        <div class="flex items-center gap-3">
+                            <span class="font-mono font-bold text-white/50 w-6">#${i+1}</span>
+                            <div>
+                                <div class="font-bold text-lg">${p.name}</div>
+                                <div class="text-xs text-white/50">${p.buys} compras</div>
+                            </div>
+                        </div>
+                        <div class="font-black text-2xl">${p.total}</div>
+                    </div>
+                `).join('');
+                
+                $('modal-scoreboard').classList.remove('hidden');
+            },
+
+            hideScoreboard: () => $('modal-scoreboard').classList.add('hidden'),
+
+            showWinner: () => {
+                $('view-game').classList.add('hidden');
+                $('view-winner').classList.remove('hidden');
+                
+                const sorted = [...state.players].sort((a,b) => a.total - b.total);
+                const w = sorted[0];
+
+                $('winner-name').innerText = w.name;
+                $('winner-score').innerText = w.total + ' pts';
+                $('winner-buys').innerText = w.buys;
+                
+                confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+            },
+
+            shareWhatsApp: () => {
+                const sorted = [...state.players].sort((a,b) => a.total - b.total);
+                let msg = `🏆 *RESULTADOS TELEFUNQUE* 🇪🇨\n`;
+                msg += `📅 ${state.startDate}\n\n`;
+
+                if(state.roundIdx >= ROUNDS.length) {
+                    msg += `🥇 *GANADOR: ${sorted[0].name}* (${sorted[0].total} pts)\n\n`;
+                } else {
+                    msg += `📌 Ronda ${state.roundIdx} / ${ROUNDS.length}\n\n`;
+                }
+
+                sorted.forEach((p, i) => {
+                    msg += `${i+1}. ${p.name}: ${p.total} pts (${p.buys}🛒)\n`;
+                });
+                
+                window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+            },
+
+            save: () => localStorage.setItem('telefunque_db', JSON.stringify(state)),
+            
+            clearStorage: () => {
+                localStorage.removeItem('telefunque_db');
+                window.location.reload();
+            }
+        };
+
+        // Arrancar
+        window.onload = app.init;
+    </script>
+</body>
+</html>
+
